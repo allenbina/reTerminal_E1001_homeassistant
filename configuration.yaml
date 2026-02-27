@@ -1,0 +1,159 @@
+template:
+  - trigger:
+      - platform: time_pattern
+        minutes: "/3"
+      - platform: homeassistant
+        event: start
+      - platform: event
+        event_type: "epaper_refresh"
+    action:
+      - service: calendar.get_events
+        target:
+          entity_id:
+            - calendar.##### calendar1 #####
+            - calendar..#####calendar2 #####
+            - calendar..##### calendar3 #####
+        data:
+          duration:
+            days: 7
+        response_variable: cal_raw
+    sensor:
+      - name: "Epaper Calendar Text"
+        unique_id: epaper_calendar_text
+        state: "{{ now().strftime('%H:%M:%S') }}"
+        attributes:
+          content: >-
+            {%- set ns = namespace(events=[], current_day='', lines=[]) -%}
+            {%- set today = now().date() -%}
+            {%- for cid, data in cal_raw.items() -%}
+              {%- for e in data.events -%}
+                {%- if as_datetime(e.start).date() >= today -%}
+                  {%- set ns.events = ns.events + [e] -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+            {%- set sorted_events = ns.events | sort(attribute='start') -%}
+            {%- for e in sorted_events[:14] -%}
+              {%- set start = as_datetime(e.start) -%}
+              {%- set day_name = start.strftime('%A') -%}
+              {%- set date_str = start.strftime('%-m/%-d') -%}
+              {%- set day_key = start.strftime('%Y-%m-%d') -%}
+              {%- if day_key != ns.current_day -%}
+                {%- set ns.current_day = day_key -%}
+                {%- set ns.lines = ns.lines + [day_name ~ '    ' ~ date_str] -%}
+              {%- endif -%}
+              {%- set is_all_day = e.all_day | default(false) -%}
+              {%- set time = '' if is_all_day else start.strftime('%-I:%M%p').lower() -%}
+
+              {%- set ns.lines = ns.lines + [time ~ ' ' ~ e.summary] -%}
+            {%- endfor -%}
+            {{ ns.lines | join('\n') }}
+
+  - trigger:
+      - platform: time_pattern
+        minutes: "/3"
+      - platform: homeassistant
+        event: start
+      - platform: event
+        event_type: "epaper_refresh"
+    action:
+      - service: todo.get_items
+        target:
+          entity_id: todo.inbox_2
+        data:
+          status: needs_action
+        response_variable: todo_raw
+    sensor:
+      - name: "Epaper Todo Text"
+        unique_id: epaper_todo_text
+        state: "{{ now().strftime('%H:%M:%S') }}"
+        attributes:
+          content: >-
+            {%- set items = todo_raw['todo.inbox_2']['items'] -%}
+            {%- set ns = namespace(lines=[]) -%}
+            {%- for it in items[:12] -%}
+              {%- set ns.lines = ns.lines + ['• ' ~ it.summary] -%}
+            {%- endfor -%}
+            {{ ns.lines | join('\n') }}          
+  - trigger:
+      - platform: time_pattern
+        minutes: "/3"
+      - platform: homeassistant
+        event: start
+      - platform: event
+        event_type: "epaper_refresh"
+    action:
+      - service: weather.get_forecasts
+        target:
+          entity_id: weather.home
+        data:
+          type: daily
+        response_variable: weather_raw
+    sensor:
+      - name: "Epaper Weather Day 0"
+        unique_id: epaper_weather_day0
+        state: "{{ now().strftime('%H:%M:%S') }}"
+        attributes:
+          high: "{{ weather_raw['weather.home'].forecast[0].temperature }}"
+          low: "{{ weather_raw['weather.home'].forecast[0].templow }}"
+          condition: "{{ weather_raw['weather.home'].forecast[0].condition }}"
+          
+      - name: "Epaper Weather Day 1"
+        unique_id: epaper_weather_day1
+        state: "{{ (now() + timedelta(days=1)).strftime('%a') }}"  
+        attributes:
+          high: "{{ weather_raw['weather.home'].forecast[1].temperature }}"
+          low: "{{ weather_raw['weather.home'].forecast[1].templow }}"
+          condition: "{{ weather_raw['weather.home'].forecast[1].condition }}"
+          
+      - name: "Epaper Weather Day 2"
+        unique_id: epaper_weather_day2
+        state: "{{ (now() + timedelta(days=2)).strftime('%a') }}"
+        attributes:
+          high: "{{ weather_raw['weather.home'].forecast[2].temperature }}"
+          low: "{{ weather_raw['weather.home'].forecast[2].templow }}"
+          condition: "{{ weather_raw['weather.home'].forecast[2].condition }}"
+          
+      - name: "Epaper Weather Day 3"
+        unique_id: epaper_weather_day3
+        state: "{{ (now() + timedelta(days=3)).strftime('%a') }}"
+        attributes:
+          high: "{{ weather_raw['weather.home'].forecast[3].temperature }}"
+          low: "{{ weather_raw['weather.home'].forecast[3].templow }}"
+          condition: "{{ weather_raw['weather.home'].forecast[3].condition }}"
+          
+      - name: "Epaper Weather Day 4"
+        unique_id: epaper_weather_day4
+        state: "{{ (now() + timedelta(days=4)).strftime('%a') }}"
+        attributes:
+          high: "{{ weather_raw['weather.home'].forecast[4].temperature }}"
+          low: "{{ weather_raw['weather.home'].forecast[4].templow }}"
+          condition: "{{ weather_raw['weather.home'].forecast[4].condition }}"
+
+
+  - trigger:
+      - platform: time_pattern
+        minutes: "/3"
+      - platform: homeassistant
+        event: start
+      - platform: event
+        event_type: "epaper_refresh"
+    action:
+      - service: weather.get_forecasts
+        target:
+          entity_id: weather.home
+        data:
+          type: daily
+        response_variable: weather_raw
+    sensor:
+      - name: "Epaper Weather Text"
+        unique_id: epaper_weather_text
+        state: "{{ now().strftime('%H:%M:%S') }}"
+        attributes:
+          content: >-
+            {%- set f = weather_raw['weather.home'].forecast -%}
+            {%- set ns = namespace(lines=[]) -%}
+            {%- for i in range(3) -%}
+              {%- set ns.lines = ns.lines + [f[i].condition ~ '|' ~ f[i].temperature ~ '|' ~ f[i].templow] -%}
+            {%- endfor -%}
+            {{ ns.lines | join('\n') }}

@@ -1,0 +1,303 @@
+esphome:
+  name: epaper-e1001
+  friendly_name: epaper_e1001
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: arduino
+
+logger:
+  level: DEBUG
+  logs:
+    sensor: DEBUG
+    text_sensor: DEBUG
+
+api:
+  on_client_connected:
+    then:
+      - delay: 10s
+      - component.update: epaper_display
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "#########YOUR SSID#########"
+  password: "######### YOUR PASSWORD #########"
+
+# reTerminal E1001 specific SPI pins
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_regular
+    size: 22
+    
+  - file: "gfonts://Roboto@700"
+    id: font_bold
+    size: 26
+    
+  - file: "gfonts://Roboto@700"
+    id: font_bold_small
+    size: 18
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_weather_icons
+    size: 30
+    glyphs:
+      - "\U000F0599"  # weather-sunny
+      - "\U000F0F31"  # weather-night (clear-night)
+      - "\U000F0595"  # weather-partly-cloudy
+      - "\U000F0590"  # weather-cloudy
+      - "\U000F0597"  # weather-rainy
+      - "\U000F0596"  # weather-pouring
+      - "\U000F0598"  # weather-snowy
+      - "\U000F0591"  # weather-fog
+      - "\U000F059D"  # weather-windy
+      - "\U000F0593"  # weather-lightning
+      - "\U000F067E"  # weather-partly-rainy
+
+text_sensor:
+  - platform: homeassistant
+    name: "Calendar Data"
+    entity_id: sensor.epaper_calendar_text
+    attribute: content
+    id: cal_data
+    internal: true
+    on_value:
+      then:
+        - component.update: epaper_display
+
+  - platform: homeassistant
+    name: "Todo Data"
+    entity_id: sensor.epaper_todo_text
+    attribute: content
+    id: todo_data
+    internal: true
+    on_value:
+      then:
+        - component.update: epaper_display
+
+  - platform: homeassistant
+    name: "Weather Data"
+    entity_id: sensor.epaper_weather_text
+    attribute: content
+    id: weather_data
+    internal: true
+    on_value:
+      then:
+        - component.update: epaper_display
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+display:
+  - platform: waveshare_epaper
+    id: epaper_display
+    model: 7.50inv2
+    cs_pin: GPIO10
+    dc_pin: GPIO11
+    reset_pin: 
+      number: GPIO12
+      inverted: false
+    busy_pin:
+      number: GPIO13
+      inverted: true
+    update_interval: 6h
+    lambda: |-
+      // Layout constants
+      int left_margin = 15;
+      int center_x = 405;
+      int cal_start_x = left_margin;
+      int current_y = 15;
+      int content_bottom = 470;
+      int line_height = 26;
+      int right_margin = center_x + 15;
+      int todo_start_x = right_margin;
+      int todo_y = 15;
+      int todo_bottom = 370;
+      int todo_line_height = line_height;
+      int weather_y = 385;
+
+      // Draw vertical divider
+      it.line(center_x, 0, center_x, 480);
+
+      // ============================================
+      // CALENDAR SECTION (LEFT)
+      // ============================================
+
+      if (id(cal_data).has_state()) {
+        std::string content = id(cal_data).state;
+
+        size_t start_pos = 0;
+        size_t end_pos = 0;
+
+        while ((end_pos = content.find('\n', start_pos)) != std::string::npos && current_y < content_bottom) {
+          std::string line = content.substr(start_pos, end_pos - start_pos);
+          start_pos = end_pos + 1;
+
+          if (line.length() > 75) line = line.substr(0, 72) + "...";
+
+          if (!line.empty()) {
+            if (line.find(':') == std::string::npos && line.find('/') != std::string::npos) {
+              it.print(cal_start_x, current_y, id(font_bold), line.c_str());
+              current_y += 30;
+            } else {
+              int x_offset = cal_start_x + 10;
+
+              const size_t WRAP_AT = 38;
+              const size_t SECOND_LINE_MAX = 36;
+
+              std::string l1 = line;
+              std::string l2 = "";
+
+              if (line.length() > WRAP_AT) {
+                size_t dash_pos = line.find(" - ");
+                if (dash_pos != std::string::npos && dash_pos > 0 && dash_pos < line.length() - 3) {
+                  l1 = line.substr(0, dash_pos);
+                  l2 = line.substr(dash_pos);
+                } else {
+                  size_t split = line.rfind(' ', WRAP_AT);
+                  if (split == std::string::npos || split < 10) {
+                    split = WRAP_AT;
+                  }
+                  l1 = line.substr(0, split);
+                  l2 = line.substr(split);
+                  while (!l2.empty() && l2.front() == ' ') l2.erase(0, 1);
+                }
+              }
+
+              if (l2.length() > SECOND_LINE_MAX) {
+                l2 = l2.substr(0, SECOND_LINE_MAX - 3) + "...";
+              }
+
+              it.print(x_offset, current_y, id(font_regular), l1.c_str());
+              current_y += line_height;
+
+              if (!l2.empty() && current_y < content_bottom) {
+                it.print(x_offset + 12, current_y, id(font_regular), l2.c_str());
+                current_y += line_height;
+              }
+            }
+          }
+        }
+      } else {
+        it.print(cal_start_x, 15, id(font_regular), "Loading calendar...");
+      }
+
+      // ============================================
+      // TODO SECTION (RIGHT)
+      // ============================================
+
+      if (id(todo_data).has_state()) {
+        std::string tcontent = id(todo_data).state;
+
+        size_t tstart = 0;
+        size_t tend = 0;
+
+        while ((tend = tcontent.find('\n', tstart)) != std::string::npos && todo_y < todo_bottom) {
+          std::string tline = tcontent.substr(tstart, tend - tstart);
+          tstart = tend + 1;
+
+          if (!tline.empty()) {
+            if (tline.length() > 43) {
+              tline = tline.substr(0, 40) + "...";
+            }
+            it.print(todo_start_x, todo_y, id(font_regular), tline.c_str());
+            todo_y += todo_line_height;
+          }
+        }
+
+        if (todo_y < todo_bottom && tstart < tcontent.size()) {
+          std::string tline = tcontent.substr(tstart);
+          if (!tline.empty()) {
+            if (tline.length() > 43) {
+              tline = tline.substr(0, 40) + "...";
+            }
+            it.print(todo_start_x, todo_y, id(font_regular), tline.c_str());
+            todo_y += todo_line_height;
+          }
+        }
+
+      } else {
+        it.print(todo_start_x, 15, id(font_regular), "Loading todo...");
+      }
+
+      // ============================================
+      // WEATHER SECTION (BOTTOM RIGHT)
+      // ============================================
+      it.line(center_x, weather_y - 10, 800, weather_y - 10);
+
+      auto weather_icon = [](const std::string &cond) -> std::string {
+        if (cond == "sunny")               return "\U000F0599";
+        if (cond == "clear-night")         return "\U000F0F31";
+        if (cond == "partlycloudy")        return "\U000F0595";
+        if (cond == "cloudy")              return "\U000F0590";
+        if (cond == "rainy")               return "\U000F0597";
+        if (cond == "pouring")             return "\U000F0596";
+        if (cond == "snowy")               return "\U000F0598";
+        if (cond == "fog")                 return "\U000F0591";
+        if (cond == "windy")               return "\U000F059D";
+        if (cond == "lightning")           return "\U000F0593";
+        if (cond == "lightning-rainy")     return "\U000F0593";
+        if (cond == "partlycloudy-rainy")  return "\U000F067E";
+        return "\U000F0590";  // default: cloudy
+      };
+
+      if (id(weather_data).has_state()) {
+        // Parse "condition|high|low\ncondition|high|low\ncondition|high|low"
+        std::string wcontent = id(weather_data).state;
+        
+        struct WDay {
+          std::string condition;
+          float high;
+          float low;
+        };
+        WDay days[3];
+        int day_count = 0;
+
+        size_t wstart = 0;
+        size_t wend = 0;
+        while (day_count < 3) {
+          wend = wcontent.find('\n', wstart);
+          std::string wline = (wend == std::string::npos) 
+            ? wcontent.substr(wstart)
+            : wcontent.substr(wstart, wend - wstart);
+
+          // Parse condition|high|low
+          size_t p1 = wline.find('|');
+          size_t p2 = wline.find('|', p1 + 1);
+          if (p1 != std::string::npos && p2 != std::string::npos) {
+            days[day_count].condition = wline.substr(0, p1);
+            days[day_count].high = atof(wline.substr(p1 + 1, p2 - p1 - 1).c_str());
+            days[day_count].low = atof(wline.substr(p2 + 1).c_str());
+            day_count++;
+          }
+
+          if (wend == std::string::npos) break;
+          wstart = wend + 1;
+        }
+
+        auto now = id(homeassistant_time).now();
+        const char* day_names[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+
+        int col_width = 130;
+        int col_start = center_x + 10;
+
+        for (int i = 0; i < day_count; i++) {
+          int x = col_start + (i * col_width);
+          int future_dow = (now.day_of_week - 1 + i) % 7;
+          const char* day = (i == 0) ? "Today" : day_names[future_dow];
+
+          it.print(x, weather_y, id(font_bold_small), day);
+          it.print(x, weather_y + 20, id(font_weather_icons), weather_icon(days[i].condition).c_str());
+          it.printf(x, weather_y + 55, id(font_bold_small), "%.0f/%.0f", days[i].high, days[i].low);
+        }
+      } else {
+        it.print(todo_start_x, weather_y, id(font_regular), "Loading weather...");
+      }
