@@ -13,4 +13,4 @@ Upload the ienk yaml to your screen.
 
 enter your wifi credentials and your calendar names and you're good to go.
 
-![](https://github.com/allenbina/reTerminal_E1001_homeassistant/blob/main/unnamed.jpg?raw=true)
+![](https://github.com/allenbina/reTerminal_E1001_homeassistant/blob/main/epaper_screenshot.png)
